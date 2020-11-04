@@ -1,4 +1,6 @@
 import java.util.HashMap;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 public class StudentNetworkSimulator extends NetworkSimulator
 {
@@ -216,7 +218,10 @@ public class StudentNetworkSimulator extends NetworkSimulator
     }
 
     private boolean checkSum(int result, String payload) {
-        return true;
+        byte[] bytes = payload.getBytes();
+        Checksum crc32 = new CRC32();
+        crc32.update(bytes, 0, bytes.length);
+        return ((int) crc32.getValue()) == result;
     }
 
     // This routine will be called once, before any of your other B-side 
