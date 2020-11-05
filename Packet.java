@@ -4,6 +4,7 @@ public class Packet
     private int acknum;
     private int checksum;
     private String payload;
+    public int []sack;
     
     public Packet(Packet p)
     {
@@ -11,6 +12,7 @@ public class Packet
         acknum = p.getAcknum();
         checksum = p.getChecksum();
         payload = new String(p.getPayload());
+        sack = p.sack;
     }
     
     public Packet(int seq, int ack, int check, String newPayload)
@@ -18,6 +20,7 @@ public class Packet
         seqnum = seq;
         acknum = ack;
         checksum = check;
+        sack = new int[5];
         if (newPayload == null)
         {
             payload = "";

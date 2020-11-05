@@ -2,6 +2,7 @@
 
 import com.sun.xml.internal.bind.v2.runtime.reflect.Lister;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -104,6 +105,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     private Queue<Packet> buffer;
     private HashMap<Integer, Packet> bufferA;
     private HashMap<Integer, Packet> bufferB;
+    private Queue<Integer> sack;
     private Packet []windowsB;
 
     private int curr_seq;
@@ -111,8 +113,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
 
     private int rcv_curr;
     private int rcv_base;
-    private int currentExpectedACK;
-    private int currentExpectedSEQ;
     
     // Add any necessary class variables here.  Remember, you cannot use
     // these variables to send messages error free!  They can only hold
@@ -145,7 +145,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
             messageNum++;
             int seqNo = curr_seq;// % LimitSeqNo;
             int ackNo = -1;
-            int checksum = makeCheckSum(message.getData());
+            int checksum = makeCheckSum(message.getData()+seqNo);
             String payload = message.getData();
             Packet packet = new Packet(seqNo, ackNo, checksum, payload);
             if (bufferA.size()<WindowSize) {
@@ -170,9 +170,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
         //stopTimer(A);
         int checksum = packet.getChecksum();
         int ackNo = packet.getAcknum();
-
         // not corrupted
-        if (checkSum(checksum, packet.getPayload())){
+        if (checkSum(checksum, packet.getPayload()+packet.getSeqnum()+packet.getAcknum())){
             // mark packet as ACKed
             if (bufferA.containsKey(ackNo))
                 bufferA.get(ackNo).setAcknum(ackNo);
@@ -194,15 +193,26 @@ public class StudentNetworkSimulator extends NetworkSimulator
                     curr_seq++;
                 }
             }
-        }else{ //corrupted, send first unacknowledged packet
+        }else{//corrupted, send first unacknowledged packet
+            corruptedNum++;
             if (bufferA.size()!=0) {
-                toLayer3(A, bufferA.get(send_base));
-                retransmitNum++;
-                corruptedNum++;
-                startTimer(A, RxmtInterval);
+                for (Integer Key: bufferA.keySet()) {
+                    boolean flag = true;
+                    for (int i = 0; i < packet.sack.length; i++) {
+                        if (packet.sack[i] == Key){
+                            flag = false;
+                            break;
+                        }
+                    }
+                    if (flag) {
+                        toLayer3(A, bufferA.get(Key));
+                        retransmitNum++;
+                        //corruptedNum++;
+                        startTimer(A, RxmtInterval);
+                    }
+                }
             }
         }
-        //duplicated packet do nothing
     }
     
     // This routine will be called when A's timer expires (thus generating a 
@@ -244,15 +254,37 @@ public class StudentNetworkSimulator extends NetworkSimulator
         int ackNo = seqNo;
         int checksum = packet.getChecksum();
         String payload = packet.getPayload();
-        if(checkSum(checksum, packet.getPayload()) && (duplicatedSeq(packet.getSeqnum(), bufferB))){ //duplicated packet, return packet as response
-            Packet response = new Packet(seqNo,ackNo,checksum, payload);
+        if(checkSum(checksum, packet.getPayload()+packet.getSeqnum()) && (duplicatedSeq(packet.getSeqnum(), bufferB))){ //duplicated packet, return packet as response
+            int newchecksum = makeCheckSum(packet.getPayload()+packet.getSeqnum()+ackNo);
+            Packet response = new Packet(seqNo,ackNo,newchecksum, payload);
+            if (sack.size()<5){
+                sack.offer(packet.getSeqnum());
+            }else{
+                sack.poll();
+                sack.offer(packet.getSeqnum());
+            }
+            for (int i = 0;i < Math.min(sack.size(),response.sack.length); i++){
+                response.sack[i] = sack.poll();
+                sack.offer(response.sack[i]);
+            }
             toLayer3(B,response);
             ACK_B++;
-        }else if (checkSum(checksum, packet.getPayload())){ // not corrupted
+        }else if (checkSum(checksum, packet.getPayload()+packet.getSeqnum())){ // not corrupted
             if (bufferB.size() == WindowSize){
                 return;
             }
-            Packet response = new Packet(seqNo,ackNo,checksum, payload);
+            int newchecksum = makeCheckSum(packet.getPayload()+packet.getSeqnum()+ackNo);
+            Packet response = new Packet(seqNo,ackNo,newchecksum, payload);
+            if (sack.size()<5){
+                sack.offer(packet.getSeqnum());
+            }else{
+                sack.poll();
+                sack.offer(packet.getSeqnum());
+            }
+            for (int i = 0;i < Math.min(sack.size(),response.sack.length); i++){
+                response.sack[i] = sack.poll();
+                sack.offer(response.sack[i]);
+            }
             toLayer3(B,response);
             bufferB.put(seqNo, packet);
             while(bufferB.containsKey(rcv_base)){
@@ -302,6 +334,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
         rcv_base = 0;
         rcv_curr = FirstSeqNo - 1;
         bufferB = new HashMap<>();
+        sack = new LinkedList<>();
     }
 
     private int messageNum = 0;
