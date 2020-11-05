@@ -142,6 +142,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // the receiving upper layer.
     protected void aOutput(Message message)
     {
+            messageNum++;
             int seqNo = curr_seq % LimitSeqNo;
             int ackNo = -1;
             int checksum = makeCheckSum(message.getData());
@@ -149,7 +150,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
             Packet packet = new Packet(seqNo, ackNo, checksum, payload);
             if (bufferA.size()<WindowSize) {
                 toLayer3(A, packet);
-                messageNum++;
                 start_time = getTime();
                 bufferA.put(seqNo, packet);
                 startTimer(A, RxmtInterval);
@@ -167,7 +167,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     {
         end_time = getTime();
         rtt += (end_time - start_time);
-        stopTimer(A);
+        //stopTimer(A);
         int checksum = packet.getChecksum();
         int ackNo = packet.getAcknum();
 
@@ -188,7 +188,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
                     Packet p = buffer.poll();
                     int seqNo = p.getSeqnum() % LimitSeqNo;
                     toLayer3(A, p);
-                    messageNum++;
                     start_time = getTime();
                     bufferA.put(seqNo, packet);
                     startTimer(A, RxmtInterval);
@@ -196,10 +195,12 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 }
             }
         }else{ //corrupted, send first unacknowledged packet
-            toLayer3(A, bufferA.get(send_base));
-            retransmitNum++;
-            corruptedNum++;
-            startTimer(A, RxmtInterval);
+            if (bufferA.size()!=0) {
+                toLayer3(A, bufferA.get(send_base));
+                retransmitNum++;
+                corruptedNum++;
+                startTimer(A, RxmtInterval);
+            }
         }
         //duplicated packet do nothing
     }
@@ -210,12 +211,14 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // for how the timer is started and stopped. 
     protected void aTimerInterrupt()
     {
-        stopTimer(A);
-        Packet retransmitPacket = bufferA.get(send_base); //retransmit the first unacknowledged packet
-        toLayer3(A, retransmitPacket);
-        retransmitNum++;
-        lostNum++;
-        startTimer(A, RxmtInterval);
+        //stopTimer(A);
+        if (!bufferA.isEmpty()) {
+            Packet retransmitPacket = bufferA.get(send_base); //retransmit the first unacknowledged packet
+            toLayer3(A, retransmitPacket);
+            retransmitNum++;
+            lostNum++;
+            startTimer(A, RxmtInterval);
+        }
     }
     
     // This routine will be called once, before any of your other A-side 
@@ -237,7 +240,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // sent from the A-side.
     protected void bInput(Packet packet)
     {
-        delivered++;
         int seqNo = packet.getSeqnum();
         int ackNo = seqNo;
         int checksum = packet.getChecksum();
@@ -255,6 +257,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
             bufferB.put(seqNo, packet);
             while(bufferB.containsKey(rcv_base)){
                 toLayer5(bufferB.get(rcv_base).getPayload());
+                delivered++;
                 bufferB.remove(rcv_base);
                 rcv_base++;
                 rcv_base %= LimitSeqNo;
@@ -327,7 +330,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     	System.out.println("==================================================");
 
     	// PRINT YOUR OWN STATISTIC HERE TO CHECK THE CORRECTNESS OF YOUR PROGRAM
-    	System.out.println("\nEXTRA:");
+    	System.out.println("\nEXTRA:"+buffer.size());
     	// EXAMPLE GIVEN BELOW
     	//System.out.println("Example statistic you want to check e.g. number of ACK packets received by A :" + "<YourVariableHere>"); 
     }	
