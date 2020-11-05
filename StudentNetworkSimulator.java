@@ -145,6 +145,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
 
             Packet packet = new Packet(seqNo, ackNo, checksum, payload);
             toLayer3(A, packet);
+            messageNum++;
+            start_time = getTime();
             bufferA.put(seqNo, packet);
             startTimer(A, RxmtInterval);
             curr_seq++;
@@ -157,6 +159,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // sent from the B-side.
     protected void aInput(Packet packet)
     {
+        end_time = getTime();
+        rtt += (end_time - start_time);
         stopTimer(A);
         int checksum = packet.getChecksum();
         int ackNo = packet.getAcknum();
@@ -165,7 +169,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
         if (checkSum(checksum, packet.getPayload())){
             // mark packet as ACKed
             bufferA.get(ackNo).setAcknum(ackNo);
-
             // remove all leading ACKed packet from buffer
             while(bufferA.containsKey(send_base)){
                 if (bufferA.get(send_base).getAcknum() == -1){
@@ -177,6 +180,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
             }
         }else{ //corrupted, send first unacknowledged packet
             toLayer3(A, bufferA.get(send_base));
+            retransmitNum++;
+            corruptedNum++;
             startTimer(A, RxmtInterval);
         }
         //duplicated packet do nothing
@@ -191,6 +196,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
         stopTimer(A);
         Packet retransmitPacket = bufferA.get(send_base); //retransmit the first unacknowledged packet
         toLayer3(A, retransmitPacket);
+        retransmitNum++;
+        lostNum++;
         startTimer(A, RxmtInterval);
     }
     
@@ -212,6 +219,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // sent from the A-side.
     protected void bInput(Packet packet)
     {
+        delivered++;
         int seqNo = packet.getSeqnum();
         int ackNo = seqNo;
         int checksum = packet.getChecksum();
@@ -219,6 +227,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
         if(checkSum(checksum, packet.getPayload()) && (duplicatedSeq(packet.getSeqnum(), bufferB))){ //duplicated packet, return packet as response
             Packet response = new Packet(seqNo,ackNo,checksum, payload);
             toLayer3(B,response);
+            ACK_B++;
         }else if (checkSum(checksum, packet.getPayload())){ // not corrupted
             Packet response = new Packet(seqNo,ackNo,checksum, payload);
             toLayer3(B,response);
@@ -231,6 +240,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
             }
         }else{ // corrupted
             // do nothing
+            corruptedNum++;
         }
     }
 
@@ -274,19 +284,28 @@ public class StudentNetworkSimulator extends NetworkSimulator
         bufferB = new HashMap<>();
     }
 
+    private int messageNum = 0;
+    private int retransmitNum = 0;
+    private int delivered = 0;
+    private int ACK_B = 0;
+    private int corruptedNum = 0;
+    private int lostNum = 0;
+    private double rtt = 0;
+    private double start_time;
+    private double end_time;
     // Use to print final statistics
     protected void Simulation_done()
     {
     	// TO PRINT THE STATISTICS, FILL IN THE DETAILS BY PUTTING VARIBALE NAMES. DO NOT CHANGE THE FORMAT OF PRINTED OUTPUT
     	System.out.println("\n\n===============STATISTICS=======================");
-    	System.out.println("Number of original packets transmitted by A:" + "<YourVariableHere>");
-    	System.out.println("Number of retransmissions by A:" + "<YourVariableHere>");
-    	System.out.println("Number of data packets delivered to layer 5 at B:" + "<YourVariableHere>");
-    	System.out.println("Number of ACK packets sent by B:" + "<YourVariableHere>");
-    	System.out.println("Number of corrupted packets:" + "<YourVariableHere>");
-    	System.out.println("Ratio of lost packets:" + "<YourVariableHere>" );
-    	System.out.println("Ratio of corrupted packets:" + "<YourVariableHere>");
-    	System.out.println("Average RTT:" + "<YourVariableHere>");
+    	System.out.println("Number of original packets transmitted by A:" + messageNum);
+    	System.out.println("Number of retransmissions by A:" + retransmitNum);
+    	System.out.println("Number of data packets delivered to layer 5 at B:" + delivered);
+    	System.out.println("Number of ACK packets sent by B:" + ACK_B);
+    	System.out.println("Number of corrupted packets:" + corruptedNum);
+    	System.out.println("Ratio of lost packets:" + lostNum);
+    	System.out.println("Ratio of corrupted packets:" + corruptedNum);
+    	System.out.println("Average RTT:" + rtt/(messageNum - corruptedNum - lostNum));
     	System.out.println("Average communication time:" + "<YourVariableHere>");
     	System.out.println("==================================================");
 
