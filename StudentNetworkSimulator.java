@@ -202,6 +202,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
         windowsA = new Packet[WindowSize];
         send_base = 0;
         curr_seq = FirstSeqNo - 1;
+        bufferA = new HashMap<>();
     }
     
     // This routine will be called whenever a packet sent from the B-side 
@@ -268,6 +269,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
         windowsB = new Packet[WindowSize];
         rcv_base = 0;
         rcv_curr = FirstSeqNo - 1;
+        bufferB = new HashMap<>();
     }
 
     // Use to print final statistics
