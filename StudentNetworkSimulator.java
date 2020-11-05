@@ -143,7 +143,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     protected void aOutput(Message message)
     {
             messageNum++;
-            int seqNo = curr_seq % LimitSeqNo;
+            int seqNo = curr_seq;// % LimitSeqNo;
             int ackNo = -1;
             int checksum = makeCheckSum(message.getData());
             String payload = message.getData();
@@ -165,7 +165,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // sent from the B-side.
     protected void aInput(Packet packet)
     {
-        end_time = getTime();
+        //end_time = getTime();
         rtt += (end_time - start_time);
         //stopTimer(A);
         int checksum = packet.getChecksum();
@@ -183,7 +183,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 }
                 bufferA.remove(send_base);
                 send_base++;
-                send_base%=LimitSeqNo;
+                //send_base%=LimitSeqNo;
                 if (!buffer.isEmpty()){
                     Packet p = buffer.poll();
                     int seqNo = p.getSeqnum() % LimitSeqNo;
@@ -260,7 +260,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 delivered++;
                 bufferB.remove(rcv_base);
                 rcv_base++;
-                rcv_base %= LimitSeqNo;
+                //rcv_base %= LimitSeqNo;
             }
         }else{ // corrupted
             // do nothing
