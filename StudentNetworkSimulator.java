@@ -168,11 +168,14 @@ public class StudentNetworkSimulator extends NetworkSimulator
 
             // remove all leading ACKed packet from buffer
             while(bufferA.containsKey(send_base)){
+                if (bufferA.get(send_base).getAcknum() == -1){
+                    break;
+                }
                 bufferA.remove(send_base);
                 send_base++;
             }
-        }else{ //corrupted
-            toLayer3(A, packet);
+        }else{ //corrupted, send first unacknowledged packet
+            toLayer3(A, bufferA.get(send_base));
             startTimer(A, RxmtInterval);
         }
         //duplicated packet do nothing
@@ -211,16 +214,35 @@ public class StudentNetworkSimulator extends NetworkSimulator
         int ackNo = seqNo;
         int checksum = packet.getChecksum();
         String payload = packet.getPayload();
-
-        if (checkSum(checksum, packet.getPayload())){ // not corrupted
+        if(checkSum(checksum, packet.getPayload()) && (duplicatedSeq(packet.getSeqnum(), bufferB))){ //duplicated packet, return packet as response
             Packet response = new Packet(seqNo,ackNo,checksum, payload);
+            toLayer3(B,response);
+        }else if (checkSum(checksum, packet.getPayload())){ // not corrupted
+            Packet response = new Packet(seqNo,ackNo,checksum, payload);
+            toLayer3(B,response);
             bufferB.put(seqNo, packet);
             while(bufferB.containsKey(rcv_base)){
+                toLayer5(bufferB.get(rcv_base).getPayload());
                 bufferB.remove(rcv_base);
                 rcv_base++;
             }
         }else{ // corrupted
             // do nothing
+        }
+    }
+
+    private boolean duplicatedSeq(int seqnum, HashMap<Integer,Packet> bufferB) {
+        int minSeq = LimitSeqNo+1;
+        if (bufferB.containsKey(seqnum)){
+            return true;
+        }
+        for (Integer Key: bufferB.keySet()){
+            minSeq = Math.min(minSeq, Key);
+        }
+        if (minSeq > seqnum){
+            return true;
+        }else{
+            return false;
         }
     }
 
