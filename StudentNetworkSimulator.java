@@ -1,6 +1,10 @@
 //import com.sun.xml.internal.bind.v2.runtime.reflect.Lister;
 
+import com.sun.xml.internal.bind.v2.runtime.reflect.Lister;
+
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
@@ -97,6 +101,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     private int LimitSeqNo;
 
     private Packet []windowsA;
+    private Queue<Packet> buffer;
     private HashMap<Integer, Packet> bufferA;
     private HashMap<Integer, Packet> bufferB;
     private Packet []windowsB;
@@ -137,20 +142,21 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // the receiving upper layer.
     protected void aOutput(Message message)
     {
-        while(curr_seq - send_base + 1 < windowsA.length){
-            int seqNo = curr_seq+1 % LimitSeqNo;
+            int seqNo = curr_seq + 1 % LimitSeqNo;
             int ackNo = -1;
             int checksum = makeCheckSum(message.getData());
             String payload = message.getData();
-
             Packet packet = new Packet(seqNo, ackNo, checksum, payload);
-            toLayer3(A, packet);
-            messageNum++;
-            start_time = getTime();
-            bufferA.put(seqNo, packet);
-            startTimer(A, RxmtInterval);
-            curr_seq++;
-        }
+            if (curr_seq - send_base + 1 < windowsA.length) {
+                toLayer3(A, packet);
+                messageNum++;
+                start_time = getTime();
+                bufferA.put(seqNo, packet);
+                startTimer(A, RxmtInterval);
+                curr_seq++;
+            }else{
+                buffer.offer(packet);
+            }
     }
     
     // This routine will be called whenever a packet sent from the B-side 
@@ -168,7 +174,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
         // not corrupted
         if (checkSum(checksum, packet.getPayload())){
             // mark packet as ACKed
-            bufferA.get(ackNo).setAcknum(ackNo);
+            if (bufferA.containsKey(ackNo))
+                bufferA.get(ackNo).setAcknum(ackNo);
             // remove all leading ACKed packet from buffer
             while(bufferA.containsKey(send_base)){
                 if (bufferA.get(send_base).getAcknum() == -1){
@@ -177,6 +184,15 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 bufferA.remove(send_base);
                 send_base++;
                 send_base%=LimitSeqNo;
+                if (!buffer.isEmpty()){
+                    Packet p = buffer.poll();
+                    toLayer3(A, p);
+                    messageNum++;
+                    start_time = getTime();
+                    bufferA.put(p.getSeqnum(), packet);
+                    startTimer(A, RxmtInterval);
+                    curr_seq++;
+                }
             }
         }else{ //corrupted, send first unacknowledged packet
             toLayer3(A, bufferA.get(send_base));
@@ -211,6 +227,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
         send_base = 0;
         curr_seq = FirstSeqNo - 1;
         bufferA = new HashMap<>();
+        buffer = new LinkedList<>();
     }
     
     // This routine will be called whenever a packet sent from the B-side 
@@ -229,6 +246,9 @@ public class StudentNetworkSimulator extends NetworkSimulator
             toLayer3(B,response);
             ACK_B++;
         }else if (checkSum(checksum, packet.getPayload())){ // not corrupted
+            if (bufferB.size() == WindowSize){
+                return;
+            }
             Packet response = new Packet(seqNo,ackNo,checksum, payload);
             toLayer3(B,response);
             bufferB.put(seqNo, packet);
@@ -245,14 +265,10 @@ public class StudentNetworkSimulator extends NetworkSimulator
     }
 
     private boolean duplicatedSeq(int seqnum, HashMap<Integer,Packet> bufferB) {
-        int minSeq = LimitSeqNo+1;
         if (bufferB.containsKey(seqnum)){
             return true;
         }
-        for (Integer Key: bufferB.keySet()){
-            minSeq = Math.min(minSeq, Key);
-        }
-        if (minSeq > seqnum){
+        if (rcv_base > seqnum){
             return true;
         }else{
             return false;
