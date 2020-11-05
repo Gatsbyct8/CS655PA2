@@ -142,12 +142,12 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // the receiving upper layer.
     protected void aOutput(Message message)
     {
-            int seqNo = curr_seq + 1 % LimitSeqNo;
+            int seqNo = curr_seq % LimitSeqNo;
             int ackNo = -1;
             int checksum = makeCheckSum(message.getData());
             String payload = message.getData();
             Packet packet = new Packet(seqNo, ackNo, checksum, payload);
-            if (curr_seq - send_base + 1 < windowsA.length) {
+            if (bufferA.size()<WindowSize) {
                 toLayer3(A, packet);
                 messageNum++;
                 start_time = getTime();
@@ -186,10 +186,11 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 send_base%=LimitSeqNo;
                 if (!buffer.isEmpty()){
                     Packet p = buffer.poll();
+                    int seqNo = p.getSeqnum() % LimitSeqNo;
                     toLayer3(A, p);
                     messageNum++;
                     start_time = getTime();
-                    bufferA.put(p.getSeqnum(), packet);
+                    bufferA.put(seqNo, packet);
                     startTimer(A, RxmtInterval);
                     curr_seq++;
                 }
@@ -225,7 +226,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     {
         windowsA = new Packet[WindowSize];
         send_base = 0;
-        curr_seq = FirstSeqNo - 1;
+        curr_seq = FirstSeqNo;
         bufferA = new HashMap<>();
         buffer = new LinkedList<>();
     }
