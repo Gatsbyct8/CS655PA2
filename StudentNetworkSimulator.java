@@ -1,3 +1,5 @@
+//import com.sun.xml.internal.bind.v2.runtime.reflect.Lister;
+
 import java.util.HashMap;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
@@ -93,12 +95,17 @@ public class StudentNetworkSimulator extends NetworkSimulator
     private int WindowSize;
     private double RxmtInterval;
     private int LimitSeqNo;
+
     private Packet []windowsA;
-    private HashMap<Integer, Packet> map;
+    private HashMap<Integer, Packet> bufferA;
+    private HashMap<Integer, Packet> bufferB;
     private Packet []windowsB;
-    private int countSendA;
-    private int confirmA;
-    private int receiveB;
+
+    private int curr_seq;
+    private int send_base;
+
+    private int rcv_curr;
+    private int rcv_base;
     private int currentExpectedACK;
     private int currentExpectedSEQ;
     
@@ -118,9 +125,9 @@ public class StudentNetworkSimulator extends NetworkSimulator
                                    double delay)
     {
         super(numMessages, loss, corrupt, avgDelay, trace, seed);
-	WindowSize = winsize;
-	LimitSeqNo = winsize*2; // set appropriately; assumes SR here!
-	RxmtInterval = delay;
+	    WindowSize = winsize;
+	    LimitSeqNo = winsize*2; // set appropriately; assumes SR here!
+	    RxmtInterval = delay;
     }
 
     
@@ -130,30 +137,17 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // the receiving upper layer.
     protected void aOutput(Message message)
     {
-        if (message.getData().length() > NetworkSimulator.MAXDATASIZE){
-            int i = 0;
-            while(true) {
-                if (countSendA != windowsA.length) {
-                    if (i < message.getData().length()){
-                        i += NetworkSimulator.MAXDATASIZE;
-                        Packet packet = new Packet(FirstSeqNo, 0, 0, message.getData().substring(i, i + NetworkSimulator.MAXDATASIZE));
-                        toLayer3(A, packet);
-                        startTimer(A, RxmtInterval);
-                        countSendA ++;
-                    }else{
-                        break;
-                    }
-                }
-            }
-        }else{
-            while(true) {
-                if (countSendA != windowsA.length) { //send packet if not reach the windows size limit
-                    Packet packet = new Packet(FirstSeqNo, 0, 0, message.getData());
-                    toLayer3(A, packet);
-                    startTimer(A, RxmtInterval);
-                    countSendA ++;
-                }
-            }
+        while(curr_seq - send_base + 1 < windowsA.length){
+            int seqNo = curr_seq+1;
+            int ackNo = -1;
+            int checksum = makeCheckSum(message.getData());
+            String payload = message.getData();
+
+            Packet packet = new Packet(seqNo, ackNo, checksum, payload);
+            toLayer3(A, packet);
+            bufferA.put(seqNo, packet);
+            startTimer(A, RxmtInterval);
+            curr_seq++;
         }
     }
     
@@ -164,12 +158,21 @@ public class StudentNetworkSimulator extends NetworkSimulator
     protected void aInput(Packet packet)
     {
         stopTimer(A);
-        int result = packet.getChecksum();
-        if (checkSum(result, packet.getPayload())){
-            countSendA--;
-            confirmA++;
+        int checksum = packet.getChecksum();
+        int ackNo = packet.getAcknum();
+
+        // not corrupted
+        if (checkSum(checksum, packet.getPayload())){
+            // mark packet as ACKed
+            bufferA.get(ackNo).setAcknum(ackNo);
+
+            // remove all leading ACKed packet from buffer
+            while(bufferA.containsKey(send_base)){
+                bufferA.remove(send_base);
+                send_base++;
+            }
         }else{ //corrupted
-            toLayer3(A,packet);
+            toLayer3(A, packet);
             startTimer(A, RxmtInterval);
         }
         //duplicated packet do nothing
@@ -182,8 +185,9 @@ public class StudentNetworkSimulator extends NetworkSimulator
     protected void aTimerInterrupt()
     {
         stopTimer(A);
-        Packet retransmitedPacket = windowsA[confirmA]; //retransmit the first unacknowledged packet
-        startTimer(A,RxmtInterval);
+        Packet retransmitPacket = bufferA.get(send_base); //retransmit the first unacknowledged packet
+        toLayer3(A, retransmitPacket);
+        startTimer(A, RxmtInterval);
     }
     
     // This routine will be called once, before any of your other A-side 
@@ -193,7 +197,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
     protected void aInit()
     {
         windowsA = new Packet[WindowSize];
-        countSendA = confirmA = 0;
+        send_base = 0;
+        curr_seq = FirstSeqNo - 1;
     }
     
     // This routine will be called whenever a packet sent from the B-side 
@@ -202,18 +207,20 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // sent from the A-side.
     protected void bInput(Packet packet)
     {
-        int result = packet.getChecksum();
-        if (checkSum(result, packet.getPayload())){ //right
-            Packet response = new Packet(0,packet.getSeqnum()+1,0,"");
-            while(windowsB[receiveB]!=null) {
-                toLayer5();
-                windowsB[receiveB] = null;
-                receiveB ++;
-                receiveB %= WindowSize;
+        int seqNo = packet.getSeqnum();
+        int ackNo = seqNo;
+        int checksum = packet.getChecksum();
+        String payload = packet.getPayload();
+
+        if (checkSum(checksum, packet.getPayload())){ // not corrupted
+            Packet response = new Packet(seqNo,ackNo,checksum, payload);
+            bufferB.put(seqNo, packet);
+            while(bufferB.containsKey(rcv_base)){
+                bufferB.remove(rcv_base);
+                rcv_base++;
             }
-        }else{ //corrupted or duplicated response
-            Packet response = new Packet(0,packet.getSeqnum(),0,"");
-            toLayer3(A,response);
+        }else{ // corrupted
+            // do nothing
         }
     }
 
@@ -224,6 +231,12 @@ public class StudentNetworkSimulator extends NetworkSimulator
         return ((int) crc32.getValue()) == result;
     }
 
+    private int makeCheckSum(String payload) {
+        byte[] bytes = payload.getBytes();
+        Checksum crc32 = new CRC32();
+        crc32.update(bytes, 0, bytes.length);
+        return ((int) crc32.getValue());
+    }
     // This routine will be called once, before any of your other B-side 
     // routines are called. It can be used to do any required
     // initialization (e.g. of member variables you add to control the state
@@ -231,7 +244,8 @@ public class StudentNetworkSimulator extends NetworkSimulator
     protected void bInit()
     {
         windowsB = new Packet[WindowSize];
-        receiveB = 0;
+        rcv_base = 0;
+        rcv_curr = FirstSeqNo - 1;
     }
 
     // Use to print final statistics
