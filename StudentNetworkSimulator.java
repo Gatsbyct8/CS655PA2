@@ -148,11 +148,14 @@ public class StudentNetworkSimulator extends NetworkSimulator
             int checksum = makeCheckSum(message.getData()+seqNo);
             String payload = message.getData();
             Packet packet = new Packet(seqNo, ackNo, checksum, payload);
+            if (bufferA.size()==0){
+                startTimer(A,RxmtInterval);
+            }
             if (bufferA.size()<WindowSize) {
                 toLayer3(A, packet);
                 start_time = getTime();
                 bufferA.put(seqNo, packet);
-                startTimer(A, RxmtInterval);
+                //startTimer(A, RxmtInterval);
                 curr_seq++;
             }else{
                 buffer.offer(packet);
@@ -182,6 +185,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 }
                 bufferA.remove(send_base);
                 send_base++;
+                //startTimer(A,RxmtInterval);
                 //send_base%=LimitSeqNo;
                 if (!buffer.isEmpty()){
                     Packet p = buffer.poll();
@@ -189,13 +193,17 @@ public class StudentNetworkSimulator extends NetworkSimulator
                     toLayer3(A, p);
                     start_time = getTime();
                     bufferA.put(seqNo, packet);
-                    startTimer(A, RxmtInterval);
+                    //startTimer(A, RxmtInterval);
                     curr_seq++;
                 }
+            }
+            if (bufferA.size()!=0){
+                startTimer(A,RxmtInterval);
             }
         }else{//corrupted, send first unacknowledged packet
             corruptedNum++;
             if (bufferA.size()!=0) {
+                //startTimer(A,RxmtInterval);
                 for (Integer Key: bufferA.keySet()) {
                     boolean flag = true;
                     for (int i = 0; i < packet.sack.length; i++) {
@@ -206,9 +214,9 @@ public class StudentNetworkSimulator extends NetworkSimulator
                     }
                     if (flag) {
                         toLayer3(A, bufferA.get(Key));
-                        retransmitNum++;
-                        //corruptedNum++;
-                        startTimer(A, RxmtInterval);
+                        //retransmitNum++;
+                        corruptedNum++;
+                        //startTimer(A, RxmtInterval);
                     }
                 }
             }
@@ -268,7 +276,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 sack.offer(response.sack[i]);
             }
             toLayer3(B,response);
-            ACK_B++;
         }else if (checkSum(checksum, packet.getPayload()+packet.getSeqnum())){ // not corrupted
             if (bufferB.size() == WindowSize){
                 return;
@@ -287,6 +294,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
             }
             toLayer3(B,response);
             bufferB.put(seqNo, packet);
+            ACK_B++;
             while(bufferB.containsKey(rcv_base)){
                 toLayer5(bufferB.get(rcv_base).getPayload());
                 delivered++;
