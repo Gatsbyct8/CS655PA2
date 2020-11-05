@@ -138,7 +138,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     protected void aOutput(Message message)
     {
         while(curr_seq - send_base + 1 < windowsA.length){
-            int seqNo = curr_seq+1;
+            int seqNo = curr_seq+1 % LimitSeqNo;
             int ackNo = -1;
             int checksum = makeCheckSum(message.getData());
             String payload = message.getData();
@@ -173,6 +173,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 }
                 bufferA.remove(send_base);
                 send_base++;
+                send_base%=LimitSeqNo;
             }
         }else{ //corrupted, send first unacknowledged packet
             toLayer3(A, bufferA.get(send_base));
@@ -226,6 +227,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
                 toLayer5(bufferB.get(rcv_base).getPayload());
                 bufferB.remove(rcv_base);
                 rcv_base++;
+                rcv_base %= LimitSeqNo;
             }
         }else{ // corrupted
             // do nothing
